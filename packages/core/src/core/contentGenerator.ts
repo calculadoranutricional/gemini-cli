@@ -88,7 +88,10 @@ export function getAuthTypeFromEnv(): AuthType | undefined {
   if (process.env['GOOGLE_GEMINI_BASE_URL']) {
     return AuthType.GATEWAY;
   }
-  if (process.env['GEMINI_API_KEY']) {
+  if (
+    process.env['GEMINI_API_KEY'] ||
+    parseApiKeys(process.env['GEMINI_API_KEYS']).length > 0
+  ) {
     return AuthType.USE_GEMINI;
   }
   if (
