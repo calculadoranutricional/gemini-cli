@@ -26,6 +26,11 @@ por petición, con:
 > `grep -n "interface ContentGenerator" packages/core/src/core/contentGenerator.ts`
 > y confirmá esa firma. Si difiere, adaptá `Paso 1` a la firma real (no inventes
 > una). Lo demás (nombres de archivos, utilidades) está confirmado para v0.56.
+>
+> **IMPORTANTE**: esta feature toca DOS procesos distintos — el Core (Pasos 1-4)
+> y el **flujo de autenticación del CLI** (Paso 5). Aplicar solo el Core hace que
+> `GEMINI_API_KEYS` se ignore y la CLI pida una API key al arrancar. Lee el Paso 5
+> completo antes de empezar.
 
 ---
 
@@ -409,7 +414,98 @@ El agente debe hacer **un refactor, no pegar código desde cero**:
 
 ---
 
-## Paso 5: Verificación
+## Paso 5: Aceptar `GEMINI_API_KEYS` también en la detección de auth y el flujo CLI
+
+**⚠️ Sin este paso, la feature NO funciona end-to-end.** Si el usuario exporta
+solo `GEMINI_API_KEYS` (sin `GEMINI_API_KEY`), el CLI no la detecta y al ejecutar
+`gemini` abre el diálogo pidiendo una API key (o en modo no interactivo tira
+`Please set an Auth method ... GEMINI_API_KEY ...`). Los Pasos 1-4 tocan el Core,
+pero la autenticación tiene su PROPIO flujo en el CLI. Hay que tratar
+`GEMINI_API_KEYS` igual que `GEMINI_API_KEY` en TODOS estos puntos:
+
+### 5.1 Core: `getAuthTypeFromEnv()` en `packages/core/src/core/contentGenerator.ts`
+La función hoy detecta solo `GEMINI_API_KEY` (singular). Agregar el plural
+(`parseApiKeys` ya existe en el mismo archivo, ver Paso 2):
+```typescript
+  if (
+    process.env['GEMINI_API_KEY'] ||
+    parseApiKeys(process.env['GEMINI_API_KEYS']).length > 0
+  ) {
+    return AuthType.USE_GEMINI;
+  }
+```
+
+### 5.2 CLI: `packages/cli/src/config/auth.ts` — `validateAuthMethod()`
+Solo lee `GEMINI_API_KEY`. Cambiar el import (Core ya exporta `parseApiKeys`):
+```typescript
+import { AuthType, loadApiKey, parseApiKeys } from '@google/gemini-cli-core';
+```
+Y el chequeo de la clave (dentro del bloque `USE_GEMINI`):
+```typescript
+    const key =
+      process.env['GEMINI_API_KEY'] ||
+      (parseApiKeys(process.env['GEMINI_API_KEYS']).length > 0
+        ? process.env['GEMINI_API_KEYS']
+        : undefined) ||
+      (await loadApiKey());
+```
+Actualizar también el mensaje de error para que mencione ambas variables
+(`GEMINI_API_KEY or GEMINI_API_KEYS`).
+
+### 5.3 CLI: `packages/cli/src/ui/auth/useAuth.ts` — `reloadApiKey()`
+Después de `const envKey = process.env['GEMINI_API_KEY']; ...`, agregar el fallback
+para el plural (así el diálogo precarga la clave y con Enter se confirma):
+```typescript
+    const envKeys = process.env['GEMINI_API_KEYS'];
+    if (envKeys) {
+      setApiKeyDefaultValue(envKeys);
+      return envKeys;
+    }
+```
+Y en el bloque que detecta clave existente cuando no hay `selectedType`, aceptar
+ambas y ajustar el mensaje:
+```typescript
+        if (process.env['GEMINI_API_KEY'] || process.env['GEMINI_API_KEYS']) {
+          onAuthError(
+            'Existing API key detected (GEMINI_API_KEY / GEMINI_API_KEYS). Select "Gemini API Key" option to use it.',
+          );
+```
+
+### 5.4 CLI: `packages/cli/src/ui/auth/AuthDialog.tsx` — selección inicial
+En el cálculo de `initialAuthIndex` (preselecciona la opción del menú):
+```typescript
+    if (process.env['GEMINI_API_KEY'] || process.env['GEMINI_API_KEYS']) {
+      return item.value === AuthType.USE_GEMINI;
+    }
+```
+(El `onSelect` de USE_GEMINI igual abrirá el diálogo de ingreso — comportamiento
+upstream — pero `reloadApiKey` de 5.3 ya precargó la clave.)
+
+### 5.5 CLI: `packages/cli/src/config/settings.ts` — whitelist de env vars
+Agregar `'GEMINI_API_KEYS'` al `AUTH_ENV_VAR_WHITELIST` para que la carga de
+entornos (.env) la incluya:
+```typescript
+const AUTH_ENV_VAR_WHITELIST = [
+  'GEMINI_API_KEY',
+  'GEMINI_API_KEYS',
+  'GOOGLE_API_KEY',
+  'GOOGLE_CLOUD_PROJECT',
+  'GOOGLE_CLOUD_LOCATION',
+];
+```
+
+### 5.6 Verificación mínima de auth (sin entrar al diálogo)
+```bash
+env -i PATH="$PATH" HOME="$HOME" \
+  GEMINI_API_KEYS="AIza...1,AIza...2" \
+  gemini --yolo -p "hola"
+# No debe pedir key: si sale el diálogo o el mensaje "GEMINI_API_KEY", falta algo de 5.1-5.5.
+grep -a "api-key-rotation" "$HOME/rotation.log"
+```
+
+---
+
+## Paso 6: Verificación
 
 1. Type-check del workspace de core:
    ```bash
@@ -441,6 +537,9 @@ El agente debe hacer **un refactor, no pegar código desde cero**:
 ---
 
 ## Problemas conocidos que esta spec evita
+- **Solo implementar el Core (Paso 5 omitido)**: el agente aplica Pasos 1-4 y la
+  CLI sigue pidiendo una API key al ejecutar `gemini` con solo `GEMINI_API_KEYS`.
+  Es el fallo N°1 — el flujo de auth del CLI (5.1-5.5) es parte de la feature.
 - **Firma inventada**: implementar con `(prompt, systemInstruction?)` Y no respetar
   la interfaz real → `tsc` falla. Leé la interfaz antes de codear.
 - **Imports desde `./contentGenerator.js`**: esos tipos viven en `@google/genai`.
