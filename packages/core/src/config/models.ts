@@ -79,6 +79,8 @@ export function setFlashModels(preview: string, defaultFlash: string) {
   DEFAULT_GEMINI_FLASH_MODEL = defaultFlash;
 }
 export const DEFAULT_GEMINI_FLASH_LITE_MODEL = 'gemini-3.1-flash-lite';
+export const GEMINI_3_5_FLASH_LITE_MODEL = 'gemini-3.5-flash-lite';
+export const GEMINI_3_6_FLASH_MODEL = 'gemini-3.6-flash';
 /** @deprecated Gemini 3.1 Flash Lite is now GA. Use DEFAULT_GEMINI_FLASH_LITE_MODEL. */
 export const PREVIEW_GEMINI_FLASH_LITE_MODEL = 'none';
 
@@ -96,6 +98,8 @@ export const VALID_GEMINI_MODELS = new Set([
   DEFAULT_GEMINI_3_5_FLASH_MODEL,
   SECONDARY_GEMINI_3_5_FLASH_MODEL,
   DEFAULT_GEMINI_FLASH_LITE_MODEL,
+  GEMINI_3_5_FLASH_LITE_MODEL,
+  GEMINI_3_6_FLASH_MODEL,
 
   GEMMA_4_31B_IT_MODEL,
   GEMMA_4_26B_A4B_IT_MODEL,
