@@ -32,6 +32,7 @@ import { getVersion, resolveModel } from '../../index.js';
 import type { LlmRole } from '../telemetry/llmRole.js';
 import { ModelMappingContentGenerator } from './modelMappingContentGenerator.js';
 import { CCPA_AI_MODEL_MAPPINGS } from '../config/models.js';
+import { RotatingContentGenerator } from './rotatingContentGenerator.js';
 
 /**
  * Interface abstracting the core functionalities for generating content and counting tokens.
@@ -101,6 +102,7 @@ export function getAuthTypeFromEnv(): AuthType | undefined {
 
 export type ContentGeneratorConfig = {
   apiKey?: string;
+  apiKeys?: string[];
   vertexai?: boolean;
   authType?: AuthType;
   proxy?: string;
@@ -108,6 +110,43 @@ export type ContentGeneratorConfig = {
   customHeaders?: Record<string, string>;
   vertexAiRouting?: VertexAiRoutingConfig;
 };
+
+/**
+ * Maximum number of Gemini API keys that can be used with key rotation.
+ */
+export const MAX_GEMINI_API_KEYS = 5;
+
+/**
+ * Parses a comma-separated list of API keys (e.g. from the GEMINI_API_KEYS
+ * environment variable) into a trimmed array, dropping empty entries and
+ * capping the number of keys at MAX_GEMINI_API_KEYS.
+ */
+export function parseApiKeys(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(',')
+    .map((key) => key.trim())
+    .filter((key) => key.length > 0)
+    .slice(0, MAX_GEMINI_API_KEYS);
+}
+
+/**
+ * Creates a short, masked representation of an API key for debug logs so the
+ * console never shows the full secret (e.g. "AIza***1rY").
+ */
+export function maskApiKey(
+  key: string,
+  maxPrefixLength = 4,
+  maxSuffixLength = 4,
+  mask = '***',
+): string {
+  if (key.length <= maxPrefixLength + maxSuffixLength) {
+    return mask;
+  }
+  return `${key.slice(0, maxPrefixLength)}${mask}${key.slice(-maxSuffixLength)}`;
+}
 
 export type VertexAiRequestType = 'dedicated' | 'shared';
 export type VertexAiSharedRequestType = 'priority' | 'flex';
@@ -173,6 +212,7 @@ export async function createContentGeneratorConfig(
 
   const geminiApiKey =
     apiKey || getEnv('GEMINI_API_KEY') || (await loadApiKey()) || undefined;
+  const geminiApiKeys = parseApiKeys(getEnv('GEMINI_API_KEYS'));
   const googleApiKey = getEnv('GOOGLE_API_KEY') || undefined;
   const googleCloudProject =
     getEnv('GOOGLE_CLOUD_PROJECT') ||
@@ -180,9 +220,13 @@ export async function createContentGeneratorConfig(
     undefined;
   const googleCloudLocation = getEnv('GOOGLE_CLOUD_LOCATION') || undefined;
 
-  if (authType === AuthType.USE_GEMINI && geminiApiKey) {
-    contentGeneratorConfig.apiKey = geminiApiKey;
+  if (authType === AuthType.USE_GEMINI && (geminiApiKey || geminiApiKeys.length > 0)) {
+    contentGeneratorConfig.apiKey = geminiApiKeys.length > 0 ? geminiApiKeys[0] : geminiApiKey;
     contentGeneratorConfig.vertexai = false;
+
+    if (geminiApiKeys.length > 1) {
+      contentGeneratorConfig.apiKeys = geminiApiKeys;
+    }
 
     return contentGeneratorConfig;
   }
@@ -212,6 +256,8 @@ export async function createContentGenerator(
   gcConfig: Config,
   sessionId?: string,
 ): Promise<ContentGenerator> {
+  let keyKeys: string[] = [];
+
   const generator = await (async () => {
     if (gcConfig.fakeResponsesNonStrict) {
       const fakeGenerator = await FakeContentGenerator.fromFile(
@@ -242,181 +288,204 @@ export async function createContentGenerator(
     const clientName = gcConfig.getClientName();
     const surface = determineSurface();
 
-    let userAgent: string;
-    // Use unified format for VS Code traffic.
-    // Note: We don't automatically assume a2a-server is VS Code,
-    // as it could be used by other clients unless the surface explicitly says 'vscode'.
-    if (clientName === 'acp-vscode' || surface === 'vscode') {
-      const osTypeMap: Record<string, string> = {
-        darwin: 'macOS',
-        win32: 'Windows',
-        linux: 'Linux',
-      };
-      const osType = osTypeMap[process.platform] || process.platform;
-      const osVersion = os.release();
-      const arch = process.arch;
+    const buildGeneratorForApiKey = async (
+      apiKey?: string,
+    ): Promise<ContentGenerator> => {
+      let userAgent: string;
+      if (clientName === 'acp-vscode' || surface === 'vscode') {
+        const osTypeMap: Record<string, string> = {
+          darwin: 'macOS',
+          win32: 'Windows',
+          linux: 'Linux',
+        };
+        const osType = osTypeMap[process.platform] || process.platform;
+        const osVersion = os.release();
+        const arch = process.arch;
 
-      const vscodeVersion = process.env['TERM_PROGRAM_VERSION'] || 'unknown';
-      let hostPath = `VSCode/${vscodeVersion}`;
-      if (isCloudShell()) {
-        const cloudShellVersion =
-          process.env['CLOUD_SHELL_VERSION'] || 'unknown';
-        hostPath += ` > CloudShell/${cloudShellVersion}`;
+        const vscodeVersion = process.env['TERM_PROGRAM_VERSION'] || 'unknown';
+        let hostPath = `VSCode/${vscodeVersion}`;
+        if (isCloudShell()) {
+          const cloudShellVersion =
+            process.env['CLOUD_SHELL_VERSION'] || 'unknown';
+          hostPath += ` > CloudShell/${cloudShellVersion}`;
+        }
+
+        userAgent = `CloudCodeVSCode/${version} (aidev_client; os_type=${osType}; os_version=${osVersion}; arch=${arch}; host_path=${hostPath}; proxy_client=geminicli)`;
+      } else {
+        const userAgentPrefix = clientName
+          ? `GeminiCLI-${clientName}`
+          : 'GeminiCLI';
+        userAgent = `${userAgentPrefix}/${version}/${model} (${process.platform}; ${process.arch}; ${surface})`;
       }
 
-      userAgent = `CloudCodeVSCode/${version} (aidev_client; os_type=${osType}; os_version=${osVersion}; arch=${arch}; host_path=${hostPath}; proxy_client=geminicli)`;
-    } else {
-      const userAgentPrefix = clientName
-        ? `GeminiCLI-${clientName}`
-        : 'GeminiCLI';
-      userAgent = `${userAgentPrefix}/${version}/${model} (${process.platform}; ${process.arch}; ${surface})`;
-    }
+      const customHeadersMap = parseCustomHeaders(customHeadersEnv);
+      const apiKeyAuthMechanism =
+        process.env['GEMINI_API_KEY_AUTH_MECHANISM'] || 'x-goog-api-key';
+      const apiVersionEnv = process.env['GOOGLE_GENAI_API_VERSION'];
 
-    const customHeadersMap = parseCustomHeaders(customHeadersEnv);
-    const apiKeyAuthMechanism =
-      process.env['GEMINI_API_KEY_AUTH_MECHANISM'] || 'x-goog-api-key';
-    const apiVersionEnv = process.env['GOOGLE_GENAI_API_VERSION'];
+      const baseHeaders: Record<string, string> = {
+        'User-Agent': userAgent,
+        ...customHeadersMap,
+      };
 
-    const baseHeaders: Record<string, string> = {
-      'User-Agent': userAgent,
-      ...customHeadersMap,
-    };
-
-    if (
-      apiKeyAuthMechanism === 'bearer' &&
-      (config.authType === AuthType.USE_GEMINI ||
-        config.authType === AuthType.USE_VERTEX_AI) &&
-      config.apiKey
-    ) {
-      baseHeaders['Authorization'] = `Bearer ${config.apiKey}`;
-    }
-    if (
-      config.authType === AuthType.LOGIN_WITH_GOOGLE ||
-      config.authType === AuthType.COMPUTE_ADC
-    ) {
-      const httpOptions = { headers: baseHeaders };
-      return new LoggingContentGenerator(
-        new ModelMappingContentGenerator(
-          await createCodeAssistContentGenerator(
-            httpOptions,
-            config.authType,
-            gcConfig,
-            sessionId,
-          ),
-          CCPA_AI_MODEL_MAPPINGS,
-        ),
-        gcConfig,
-      );
-    }
-
-    if (
-      config.authType === AuthType.USE_GEMINI ||
-      config.authType === AuthType.USE_VERTEX_AI ||
-      config.authType === AuthType.GATEWAY
-    ) {
-      let headers: Record<string, string> = { ...baseHeaders };
-      if (config.customHeaders) {
-        headers = { ...headers, ...config.customHeaders };
+      if (
+        apiKeyAuthMechanism === 'bearer' &&
+        (config.authType === AuthType.USE_GEMINI ||
+          config.authType === AuthType.USE_VERTEX_AI) &&
+        apiKey
+      ) {
+        baseHeaders['Authorization'] = `Bearer ${apiKey}`;
       }
       if (
-        config.authType === AuthType.USE_VERTEX_AI &&
-        config.vertexAiRouting
+        config.authType === AuthType.LOGIN_WITH_GOOGLE ||
+        config.authType === AuthType.COMPUTE_ADC
       ) {
-        const { requestType, sharedRequestType } = config.vertexAiRouting;
-        headers = {
-          ...headers,
-          ...(requestType
-            ? { [VERTEX_AI_REQUEST_TYPE_HEADER]: requestType }
-            : {}),
-          ...(sharedRequestType
-            ? { [VERTEX_AI_SHARED_REQUEST_TYPE_HEADER]: sharedRequestType }
-            : {}),
-        };
+        const httpOptions = { headers: baseHeaders };
+        return new LoggingContentGenerator(
+          new ModelMappingContentGenerator(
+            await createCodeAssistContentGenerator(
+              httpOptions,
+              config.authType,
+              gcConfig,
+              sessionId,
+            ),
+            CCPA_AI_MODEL_MAPPINGS,
+          ),
+          gcConfig,
+        );
       }
-      if (gcConfig?.getUsageStatisticsEnabled()) {
-        const installationManager = new InstallationManager();
-        const installationId = installationManager.getInstallationId();
-        headers = {
-          ...headers,
-          'x-gemini-api-privileged-user-id': `${installationId}`,
-        };
-      }
-      if (config.authType === AuthType.GATEWAY && config.apiKey === '') {
-        headers['x-goog-api-key'] = '';
-      }
-      let baseUrl = config.baseUrl;
-      if (!baseUrl) {
-        const envBaseUrl =
-          config.authType === AuthType.USE_VERTEX_AI
-            ? process.env['GOOGLE_VERTEX_BASE_URL']
-            : process.env['GOOGLE_GEMINI_BASE_URL'];
-        if (envBaseUrl) {
-          validateBaseUrl(envBaseUrl);
-          baseUrl = envBaseUrl;
-        } else if (config.authType === AuthType.USE_VERTEX_AI) {
-          const location = process.env['GOOGLE_CLOUD_LOCATION'];
-          if (location === 'us') {
-            baseUrl = VERTEX_AI_US_REP_ENDPOINT;
-          } else if (location === 'eu') {
-            baseUrl = VERTEX_AI_EU_REP_ENDPOINT;
-          }
+
+      if (
+        config.authType === AuthType.USE_GEMINI ||
+        config.authType === AuthType.USE_VERTEX_AI ||
+        config.authType === AuthType.GATEWAY
+      ) {
+        let headers: Record<string, string> = { ...baseHeaders };
+        if (config.customHeaders) {
+          headers = { ...headers, ...config.customHeaders };
         }
-      } else {
-        validateBaseUrl(baseUrl);
-      }
+        if (
+          config.authType === AuthType.USE_VERTEX_AI &&
+          config.vertexAiRouting
+        ) {
+          const { requestType, sharedRequestType } = config.vertexAiRouting;
+          headers = {
+            ...headers,
+            ...(requestType
+              ? { [VERTEX_AI_REQUEST_TYPE_HEADER]: requestType }
+              : {}),
+            ...(sharedRequestType
+              ? { [VERTEX_AI_SHARED_REQUEST_TYPE_HEADER]: sharedRequestType }
+              : {}),
+          };
+        }
+        if (gcConfig?.getUsageStatisticsEnabled()) {
+          const installationManager = new InstallationManager();
+          const installationId = installationManager.getInstallationId();
+          headers = {
+            ...headers,
+            'x-gemini-api-privileged-user-id': `${installationId}`,
+          };
+        }
+        if (config.authType === AuthType.GATEWAY && apiKey === '') {
+          headers['x-goog-api-key'] = '';
+        }
+        let baseUrl = config.baseUrl;
+        if (!baseUrl) {
+          const envBaseUrl =
+            config.authType === AuthType.USE_VERTEX_AI
+              ? process.env['GOOGLE_VERTEX_BASE_URL']
+              : process.env['GOOGLE_GEMINI_BASE_URL'];
+          if (envBaseUrl) {
+            validateBaseUrl(envBaseUrl);
+            baseUrl = envBaseUrl;
+          } else if (config.authType === AuthType.USE_VERTEX_AI) {
+            const location = process.env['GOOGLE_CLOUD_LOCATION'];
+            if (location === 'us') {
+              baseUrl = VERTEX_AI_US_REP_ENDPOINT;
+            } else if (location === 'eu') {
+              baseUrl = VERTEX_AI_EU_REP_ENDPOINT;
+            }
+          }
+        } else {
+          validateBaseUrl(baseUrl);
+        }
 
-      const httpOptions: {
-        baseUrl?: string;
-        headers: Record<string, string>;
-      } = { headers };
+        const httpOptions: {
+          baseUrl?: string;
+          headers: Record<string, string>;
+        } = { headers };
 
-      if (baseUrl) {
-        httpOptions.baseUrl = baseUrl;
-      }
+        if (baseUrl) {
+          httpOptions.baseUrl = baseUrl;
+        }
 
-      const proxyUrl = config.proxy?.trim();
-      const proxyAgent = proxyUrl
-        ? baseUrl?.startsWith('http://')
-          ? new HttpProxyAgent(proxyUrl)
-          : new HttpsProxyAgent(proxyUrl)
-        : undefined;
-      const useVertex =
-        config.vertexai ?? config.authType === AuthType.USE_VERTEX_AI;
-      const googleGenAI = new GoogleGenAI({
-        apiKey:
-          config.authType === AuthType.GATEWAY
-            ? config.apiKey
-            : config.apiKey === ''
-              ? undefined
-              : config.apiKey,
-        vertexai: config.vertexai ?? config.authType === AuthType.USE_VERTEX_AI,
-        httpOptions,
-        ...(apiVersionEnv && { apiVersion: apiVersionEnv }),
-        // Merge proxy and GDCH endpoint into googleAuthOptions if either exists
-        ...((proxyAgent || (useVertex && baseUrl)) && {
-          googleAuthOptions: {
-            clientOptions: {
-              ...(proxyAgent && {
-                transporterOptions: { agent: proxyAgent },
-              }),
-              ...(useVertex &&
-                baseUrl && {
-                  apiEndpoint: baseUrl,
+        const proxyUrl = config.proxy?.trim();
+        const proxyAgent = proxyUrl
+          ? baseUrl?.startsWith('http://')
+            ? new HttpProxyAgent(proxyUrl)
+            : new HttpsProxyAgent(proxyUrl)
+          : undefined;
+        const useVertex =
+          config.vertexai ?? config.authType === AuthType.USE_VERTEX_AI;
+        const googleGenAI = new GoogleGenAI({
+          apiKey:
+            config.authType === AuthType.GATEWAY
+              ? apiKey
+              : apiKey === ''
+                ? undefined
+                : apiKey,
+          vertexai: config.vertexai ?? config.authType === AuthType.USE_VERTEX_AI,
+          httpOptions,
+          ...(apiVersionEnv && { apiVersion: apiVersionEnv }),
+          // Merge proxy and GDCH endpoint into googleAuthOptions if either exists
+          ...((proxyAgent || (useVertex && baseUrl)) && {
+            googleAuthOptions: {
+              clientOptions: {
+                ...(proxyAgent && {
+                  transporterOptions: { agent: proxyAgent },
                 }),
+                ...(useVertex &&
+                  baseUrl && {
+                    apiEndpoint: baseUrl,
+                  }),
+              },
             },
-          },
-        }),
-      });
-      return new LoggingContentGenerator(googleGenAI.models, gcConfig);
+          }),
+        });
+        return new LoggingContentGenerator(googleGenAI.models, gcConfig);
+      }
+      throw new Error(
+        `Error creating contentGenerator: Unsupported authType: ${config.authType}`,
+      );
+    };
+
+    const rotationKeys =
+      config.authType === AuthType.USE_GEMINI && config.apiKeys
+        ? config.apiKeys
+        : [];
+    const generators: ContentGenerator[] = [];
+    if (rotationKeys.length > 1) {
+      for (const apiKey of rotationKeys) {
+        generators.push(await buildGeneratorForApiKey(apiKey));
+      }
+      keyKeys = rotationKeys.map((key) => maskApiKey(key));
+    } else {
+      generators.push(await buildGeneratorForApiKey(config.apiKey));
     }
-    throw new Error(
-      `Error creating contentGenerator: Unsupported authType: ${config.authType}`,
-    );
+    return generators;
   })();
 
+  const resolvedGenerator =
+    Array.isArray(generator) && generator.length > 1
+      ? new RotatingContentGenerator(generator, keyKeys)
+      : Array.isArray(generator)
+        ? generator[0]
+        : generator;
+
   if (gcConfig.recordResponses) {
-    return new RecordingContentGenerator(generator, gcConfig.recordResponses);
+    return new RecordingContentGenerator(resolvedGenerator, gcConfig.recordResponses);
   }
 
-  return generator;
+  return resolvedGenerator;
 }
