@@ -1,4 +1,7 @@
 {
+  "general": {
+    "devtools": true
+  },
   "security": {
     "auth": {
       "selectedType": "gemini-api-key"
