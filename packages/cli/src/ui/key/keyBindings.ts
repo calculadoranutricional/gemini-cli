@@ -385,7 +385,7 @@ export const defaultKeyBindingConfig: KeyBindingConfig = new Map([
   ],
 
   // App Controls
-  [Command.SHOW_ERROR_DETAILS, [new KeyBinding('f12')]],
+  [Command.SHOW_ERROR_DETAILS, [new KeyBinding('f12'), new KeyBinding('alt+e')]],
   [Command.SHOW_FULL_TODOS, [new KeyBinding('ctrl+t')]],
   [Command.SHOW_IDE_CONTEXT_DETAIL, [new KeyBinding('f4')]],
   [Command.TOGGLE_MARKDOWN, [new KeyBinding('alt+m')]],

@@ -349,7 +349,7 @@ describe('keyMatchers', () => {
     // App level bindings
     {
       command: Command.SHOW_ERROR_DETAILS,
-      positive: [createKey('f12')],
+      positive: [createKey('f12'), createKey('e', { alt: true })],
       negative: [
         createKey('o', { ctrl: true }),
         createKey('b', { ctrl: true }),
