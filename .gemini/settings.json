@@ -1,6 +1,6 @@
 {
   "general": {
-    "devtools": true
+    "devtools": false
   },
   "security": {
     "auth": {
