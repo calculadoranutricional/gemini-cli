@@ -562,6 +562,9 @@ export function isTrustedSystemPath(filePath: string): boolean {
       '/usr/local/Cellar',
       '/usr/sbin',
       '/sbin',
+      // Termux paths for Android environments
+      '/data/data/com.termux/files/usr/bin',
+      '/data/data/com.termux/files/usr/sbin',
       // 1P internal hermetic execution paths
       '/google/bin',
       '/google/src/cloud',

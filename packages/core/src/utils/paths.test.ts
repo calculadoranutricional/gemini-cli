@@ -867,6 +867,12 @@ describe('normalizePath', () => {
       ).toBe(true);
       expect(isTrustedSystemPath('/usr/sbin/rg')).toBe(true);
       expect(isTrustedSystemPath('/sbin/rg')).toBe(true);
+      expect(
+        isTrustedSystemPath('/data/data/com.termux/files/usr/bin/rg'),
+      ).toBe(true);
+      expect(
+        isTrustedSystemPath('/data/data/com.termux/files/usr/sbin/rg'),
+      ).toBe(true);
 
       // Untrusted paths
       expect(isTrustedSystemPath('/home/user/bin/rg')).toBe(false);
