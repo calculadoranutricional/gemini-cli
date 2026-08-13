@@ -20,6 +20,7 @@ import {
   DEFAULT_GEMINI_3_5_FLASH_MODEL,
   GEMINI_3_5_FLASH_LITE_MODEL,
   GEMINI_3_6_FLASH_MODEL,
+  GEMINI_3_7_FLASH_MODEL,
   GEMINI_MODEL_ALIAS_AUTO,
   GEMMA_4_31B_IT_MODEL,
   GEMMA_4_26B_A4B_IT_MODEL,
@@ -96,6 +97,7 @@ export function ModelDialog({ onClose }: ModelDialogProps): React.JSX.Element {
       DEFAULT_GEMINI_3_5_FLASH_MODEL,
       GEMINI_3_5_FLASH_LITE_MODEL,
       GEMINI_3_6_FLASH_MODEL,
+      GEMINI_3_7_FLASH_MODEL,
       PREVIEW_GEMINI_MODEL,
       PREVIEW_GEMINI_3_1_MODEL,
       PREVIEW_GEMINI_3_1_CUSTOM_TOOLS_MODEL,
@@ -253,6 +255,11 @@ export function ModelDialog({ onClose }: ModelDialogProps): React.JSX.Element {
         value: GEMINI_3_6_FLASH_MODEL,
         title: getDisplayString(GEMINI_3_6_FLASH_MODEL),
         key: GEMINI_3_6_FLASH_MODEL,
+      },
+      {
+        value: GEMINI_3_7_FLASH_MODEL,
+        title: getDisplayString(GEMINI_3_7_FLASH_MODEL),
+        key: GEMINI_3_7_FLASH_MODEL,
       },
     ];
 

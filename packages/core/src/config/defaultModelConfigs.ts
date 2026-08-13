@@ -131,6 +131,12 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
         model: 'gemini-3.6-flash',
       },
     },
+    'gemini-3.7-flash': {
+      extends: 'chat-base-3',
+      modelConfig: {
+        model: 'gemini-3.7-flash',
+      },
+    },
     'gemma-4-31b-it': {
       extends: 'chat-base-3',
       modelConfig: {
@@ -385,6 +391,13 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
       features: { thinking: false, multimodalToolUse: true },
     },
     'gemini-3.6-flash': {
+      tier: 'flash',
+      family: 'gemini-3',
+      isPreview: false,
+      isVisible: true,
+      features: { thinking: false, multimodalToolUse: true },
+    },
+    'gemini-3.7-flash': {
       tier: 'flash',
       family: 'gemini-3',
       isPreview: false,
