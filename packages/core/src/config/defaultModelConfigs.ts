@@ -77,6 +77,12 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
         model: 'gemini-3.1-pro-preview',
       },
     },
+    'gemini-3.1-pro': {
+      extends: 'chat-base-3',
+      modelConfig: {
+        model: 'gemini-3.1-pro',
+      },
+    },
     'gemini-3.1-pro-preview-customtools': {
       extends: 'chat-base-3',
       modelConfig: {
@@ -358,6 +364,13 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
       tier: 'pro',
       family: 'gemini-3',
       isPreview: true,
+      isVisible: true,
+      features: { thinking: true, multimodalToolUse: true },
+    },
+    'gemini-3.1-pro': {
+      tier: 'pro',
+      family: 'gemini-3',
+      isPreview: false,
       isVisible: true,
       features: { thinking: true, multimodalToolUse: true },
     },

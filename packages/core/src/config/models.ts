@@ -53,6 +53,7 @@ export interface ModelCapabilityContext {
 
 export const PREVIEW_GEMINI_MODEL = 'gemini-3-pro-preview';
 export const PREVIEW_GEMINI_3_1_MODEL = 'gemini-3.1-pro-preview';
+export const GEMINI_3_1_PRO_MODEL = 'gemini-3.1-pro';
 export const PREVIEW_GEMINI_3_1_CUSTOM_TOOLS_MODEL =
   'gemini-3.1-pro-preview-customtools';
 // TODO: set to none and const once the experiment for 3_5 flash rollut can be
@@ -92,6 +93,7 @@ export const GEMMA_4_26B_A4B_IT_MODEL = 'gemma-4-26b-a4b-it';
 export const VALID_GEMINI_MODELS = new Set([
   PREVIEW_GEMINI_MODEL,
   PREVIEW_GEMINI_3_1_MODEL,
+  GEMINI_3_1_PRO_MODEL,
   PREVIEW_GEMINI_3_1_CUSTOM_TOOLS_MODEL,
   PREVIEW_GEMINI_FLASH_MODEL,
   PREVIEW_GEMINI_FLASH_LITE_MODEL,

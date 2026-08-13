@@ -12,6 +12,7 @@ import { useUIState } from '../contexts/UIStateContext.js';
 import {
   PREVIEW_GEMINI_MODEL,
   PREVIEW_GEMINI_3_1_MODEL,
+  GEMINI_3_1_PRO_MODEL,
   PREVIEW_GEMINI_FLASH_MODEL,
   PREVIEW_GEMINI_FLASH_LITE_MODEL,
   DEFAULT_GEMINI_MODEL,
@@ -100,6 +101,7 @@ export function ModelDialog({ onClose }: ModelDialogProps): React.JSX.Element {
       GEMINI_3_6_FLASH_MODEL,
       GEMINI_3_7_FLASH_MODEL,
       GEMINI_FLASH_LATEST_MODEL,
+      GEMINI_3_1_PRO_MODEL,
       PREVIEW_GEMINI_MODEL,
       PREVIEW_GEMINI_3_1_MODEL,
       PREVIEW_GEMINI_3_1_CUSTOM_TOOLS_MODEL,
@@ -267,6 +269,11 @@ export function ModelDialog({ onClose }: ModelDialogProps): React.JSX.Element {
         value: GEMINI_FLASH_LATEST_MODEL,
         title: getDisplayString(GEMINI_FLASH_LATEST_MODEL),
         key: GEMINI_FLASH_LATEST_MODEL,
+      },
+      {
+        value: GEMINI_3_1_PRO_MODEL,
+        title: getDisplayString(GEMINI_3_1_PRO_MODEL),
+        key: GEMINI_3_1_PRO_MODEL,
       },
     ];
 
