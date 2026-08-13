@@ -5,7 +5,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { openBrowserSecurely } from './secure-browser-launcher.js';
+import {
+  openBrowserSecurely,
+  shouldLaunchBrowser,
+} from './secure-browser-launcher.js';
 
 // Create mock function using vi.hoisted
 const mockExecFile = vi.hoisted(() => vi.fn());
@@ -196,6 +199,16 @@ describe('secure-browser-launcher', () => {
       );
     });
 
+    it('should use termux-open on Android', async () => {
+      setPlatform('android');
+      await openBrowserSecurely('https://example.com');
+      expect(mockExecFile).toHaveBeenCalledWith(
+        'termux-open',
+        ['https://example.com'],
+        expect.any(Object),
+      );
+    });
+
     it('should throw on unsupported platforms', async () => {
       setPlatform('aix');
       await expect(openBrowserSecurely('https://example.com')).rejects.toThrow(
@@ -237,6 +250,15 @@ describe('secure-browser-launcher', () => {
         ['https://example.com'],
         expect.any(Object),
       );
+    });
+  });
+
+  describe('shouldLaunchBrowser', () => {
+    it('should return true on Android', () => {
+      setPlatform('android');
+      vi.stubEnv('CI', '');
+      expect(shouldLaunchBrowser()).toBe(true);
+      vi.unstubAllEnvs();
     });
   });
 });

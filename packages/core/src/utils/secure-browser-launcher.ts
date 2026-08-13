@@ -66,6 +66,12 @@ export async function openBrowserSecurely(url: string): Promise<void> {
       args = [url];
       break;
 
+    case 'android':
+      // Android / Termux
+      command = 'termux-open';
+      args = [url];
+      break;
+
     case 'win32':
       // Windows - use PowerShell with Start-Process
       // This avoids the cmd.exe shell which is vulnerable to injection
