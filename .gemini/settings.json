@@ -11,6 +11,8 @@
         "context-used"
       ]
     },
-    "useAlternateBuffer": true
+    "useAlternateBuffer": true,
+    "terminalBuffer": true,
+    "incrementalRendering": true
   }
 }
